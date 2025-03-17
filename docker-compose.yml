@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: notifications_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 2s
+      timeout: 1s
+      retries: 5
+
+  migrate:
+    image: migrate/migrate
+    container_name: notifications_migration_runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      until nc -z postgres 5432; do
+        echo 'Waiting for database...';
+        sleep 1;
+      done;
+      migrate -path /migrations -database postgres://postgres:example@postgres:5432/notifications_db?sslmode=disable up;
+      "
+    volumes:
+      - ./migrations:/migrations
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: messaging
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: [ "CMD", "kafka-topics", "--list", "--bootstrap-server", "kafka:9092" ]
+      interval: 10s
+      retries: 5
+      start_period: 20s
+      timeout: 5s
+
+  kafka-setup:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka_setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./create-topic.sh:/create-topic.sh
+    entrypoint: [ "/bin/sh", "/create-topic.sh" ]
+
+  publish-event-service:
+    build:
+      context: .
+      dockerfile: publish_event/Dockerfile
+    container_name: publish-event-service
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+
+  kafka-consumer:
+    build:
+      context: .
+      dockerfile: kafka_consumer/Dockerfile
+    container_name: kafka_consumer
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_TOPIC: notifications
+    restart: always
+
+  cron_task:
+    build:
+      context: .
+      dockerfile: cron_task/Dockerfile
+    container_name: cron_task
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+    restart: always
+
+volumes:
+  postgres_data:
