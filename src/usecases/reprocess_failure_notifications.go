@@ -8,43 +8,56 @@ import (
 )
 
 type ReprocessFailureNotificationUseCase struct {
-	Repo      NotificationRepository
-	ProviderA NotificationProvider
-	ProviderB NotificationProvider
+	NotificationRepository NotificationRepository
+	UserActionRepository   UserActionRepository
+	ProviderA              NotificationProvider
+	ProviderB              NotificationProvider
 }
 
-func NewReprocessFailureNotificationUseCase(repo NotificationRepository, providerA NotificationProvider, providerB NotificationProvider) *ReprocessFailureNotificationUseCase {
-	return &ReprocessFailureNotificationUseCase{Repo: repo, ProviderA: providerA, ProviderB: providerB}
+func NewReprocessFailureNotificationUseCase(repo NotificationRepository, userActionRepository UserActionRepository, providerA NotificationProvider, providerB NotificationProvider) *ReprocessFailureNotificationUseCase {
+	return &ReprocessFailureNotificationUseCase{NotificationRepository: repo, UserActionRepository: userActionRepository, ProviderA: providerA, ProviderB: providerB}
 }
 
 func (sn *ReprocessFailureNotificationUseCase) Reprocess() {
-	notifications, err := sn.Repo.GetFailedNotifications()
+	notifications, err := sn.NotificationRepository.GetFailedNotifications()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
 	for _, notification := range notifications {
+		log.Printf("Getting template for %s.", notification.Type)
+		contentWithPlaceholders := sn.NotificationRepository.GetTemplateOfNotification(notification.Type)
+
+		ua, err := sn.UserActionRepository.GetByID(notification.UserActionID)
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		finalContent := replaceTemplatePlaceholders(contentWithPlaceholders, &notification, ua)
+		notification.Content = finalContent
+
 		log.Printf("Processing notification %s with content %s", notification.ID, notification.Content)
 
-		notification.Status = "retrying_async"
-		sn.Repo.UpdateNotification(&notification)
+		notification.Status = "processing_async"
+		sn.NotificationRepository.UpdateNotification(&notification)
 
 		log.Printf("Trying provider A")
 		if sn.sendWithRetries(&notification, sn.ProviderA) {
-			sn.Repo.UpdateNotification(&notification)
+			sn.NotificationRepository.UpdateNotification(&notification)
 			continue
 		}
 
 		log.Printf("Trying provider B")
 		if sn.sendWithRetries(&notification, sn.ProviderB) {
-			sn.Repo.UpdateNotification(&notification)
+			sn.NotificationRepository.UpdateNotification(&notification)
 			continue
 		}
 
 		log.Printf("Both providers failed")
 		notification.Status = "permanent_failure_async"
-		sn.Repo.UpdateNotification(&notification)
+		sn.NotificationRepository.UpdateNotification(&notification)
 	}
 
 }
@@ -61,9 +74,9 @@ func (sn *ReprocessFailureNotificationUseCase) sendWithRetries(notification *ent
 
 		log.Printf("Error sending notification %s: %v\n", notification.ID, err)
 
-		notification.Status = "failed_async"
+		notification.Status = "retrying_async"
 		notification.Retries++
-		_ = sn.Repo.UpdateNotification(notification)
+		_ = sn.NotificationRepository.UpdateNotification(notification)
 
 		retries++
 		backoffDuration := BaseBackoff * time.Duration(1<<retries)

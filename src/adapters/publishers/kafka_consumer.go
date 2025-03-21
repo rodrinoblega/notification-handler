@@ -28,13 +28,13 @@ func (kc *KafkaConsumer) Subscribe() {
 		if err == nil {
 			log.Printf("Received message: %s\n", string(msg.Value))
 
-			var notification entities.Notification
-			if err := json.Unmarshal(msg.Value, &notification); err != nil {
+			var userAction entities.UserAction
+			if err := json.Unmarshal(msg.Value, &userAction); err != nil {
 				log.Println("Error parsing message:", err)
 				continue
 			}
 
-			if err := kc.SaveNotification.CreateNotification(notification); err != nil {
+			if err := kc.SaveNotification.CreateNotification(&userAction); err != nil {
 				log.Println("Error saving notification:", err)
 			} else {
 				log.Println("Notification saved successfully!")

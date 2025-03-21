@@ -13,8 +13,8 @@ type KafkaProducer struct {
 	Topic    string
 }
 
-func (kp *KafkaProducer) Publish(notification entities.Notification) error {
-	msg, err := json.Marshal(notification)
+func (kp *KafkaProducer) Publish(ua *entities.UserAction) error {
+	msg, err := json.Marshal(ua)
 	if err != nil {
 		return err
 	}

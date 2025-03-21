@@ -1,8 +1,10 @@
 package usecases
 
 import (
+	"fmt"
 	"github.com/rodrinoblega/notification_handler/src/entities"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -17,6 +19,8 @@ type NotificationRepository interface {
 	UpdateRetries(id string, retries int) (*entities.Notification, error)
 	UpdateNotification(n *entities.Notification) error
 	GetFailedNotifications() ([]entities.Notification, error)
+	GetNotifications(userID string, notificationType string, startDate, endDate time.Time, limit, offset int) ([]entities.Notification, error)
+	GetTemplateOfNotification(notificationType string) string
 }
 
 type NotificationProvider interface {
@@ -33,36 +37,50 @@ func NewSaveNotificationUseCase(repo NotificationRepository, providerA Notificat
 	return &SaveNotificationUseCase{Repo: repo, ProviderA: providerA, ProviderB: providerB}
 }
 
-func (sn *SaveNotificationUseCase) CreateNotification(notification entities.Notification) error {
-	notification.ID = time.Now().Format("20060102150405")
-	notification.CreatedAt = time.Now()
-	notification.UpdatedAt = time.Now()
-	notification.Status = "processing"
+func (sn *SaveNotificationUseCase) CreateNotification(ua *entities.UserAction) error {
+	notification := initializePendingNotification(ua)
 
-	if err := sn.Repo.Save(&notification); err != nil {
+	log.Printf("Getting template for %s.", notification.Type)
+	contentWithPlaceholders := sn.Repo.GetTemplateOfNotification(notification.Type)
+
+	finalContent := replaceTemplatePlaceholders(contentWithPlaceholders, notification, ua)
+	notification.Content = finalContent
+
+	if err := sn.Repo.Save(notification); err != nil {
 		return err
 	}
 
 	log.Printf("Trying provider A")
-	if sn.sendWithRetries(&notification, sn.ProviderA) {
-		return sn.Repo.UpdateNotification(&notification)
+	if sn.sendWithRetries(notification, finalContent, sn.ProviderA) {
+		return sn.Repo.UpdateNotification(notification)
 	}
 
 	log.Printf("Trying provider B")
-	if sn.sendWithRetries(&notification, sn.ProviderB) {
-		return sn.Repo.UpdateNotification(&notification)
+	if sn.sendWithRetries(notification, finalContent, sn.ProviderB) {
+		return sn.Repo.UpdateNotification(notification)
 	}
 
 	log.Printf("Both providers failed")
 	notification.Status = "permanent_failure"
-	return sn.Repo.UpdateNotification(&notification)
+	return sn.Repo.UpdateNotification(notification)
 }
 
-func (sn *SaveNotificationUseCase) sendWithRetries(notification *entities.Notification, provider NotificationProvider) bool {
+func initializePendingNotification(ua *entities.UserAction) *entities.Notification {
+	return &entities.Notification{
+		ID:           time.Now().Format("20060102150405"),
+		Type:         ua.ActionType,
+		UserActionID: ua.ID,
+		Status:       "pending",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
+
+func (sn *SaveNotificationUseCase) sendWithRetries(notification *entities.Notification, finalContent string, provider NotificationProvider) bool {
 	retries := 0
 
 	for retries < MaxRetries {
-		err := provider.Send(notification.Content)
+		err := provider.Send(finalContent)
 		if err == nil {
 			notification.Status = "sent"
 			return true
@@ -70,7 +88,7 @@ func (sn *SaveNotificationUseCase) sendWithRetries(notification *entities.Notifi
 
 		log.Printf("Error sending notification %s: %v\n", notification.ID, err)
 
-		notification.Status = "failed"
+		notification.Status = "retrying"
 		notification.Retries++
 		_ = sn.Repo.UpdateNotification(notification)
 
@@ -82,4 +100,18 @@ func (sn *SaveNotificationUseCase) sendWithRetries(notification *entities.Notifi
 
 	log.Printf("Provider reached max retries for notification %s.", notification.ID)
 	return false
+}
+
+func replaceTemplatePlaceholders(template string, notification *entities.Notification, ua *entities.UserAction) string {
+	replacements := map[string]string{
+		"{$userID}":           ua.UserID,
+		"{$notificationType}": notification.Type,
+		"{$amount}":           fmt.Sprintf("%.2f", ua.Amount),
+	}
+
+	for placeholder, value := range replacements {
+		template = strings.ReplaceAll(template, placeholder, value)
+	}
+
+	return template
 }

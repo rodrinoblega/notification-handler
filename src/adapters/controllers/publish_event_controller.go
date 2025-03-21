@@ -5,7 +5,6 @@ import (
 	"github.com/rodrinoblega/notification_handler/src/entities"
 	"github.com/rodrinoblega/notification_handler/src/usecases"
 	"net/http"
-	"time"
 )
 
 type PublishEventController struct {
@@ -17,31 +16,18 @@ func NewPublishEventController(nu *usecases.PublishEventUseCase) *PublishEventCo
 }
 
 func (sn *PublishEventController) SendNotification(c *gin.Context) {
-	var request struct {
-		UserID  string `json:"user_id"`
-		Type    string `json:"type"`
-		Content string `json:"content"`
-		Status  string `json:"status"`
-	}
+	var userAction *entities.UserAction
 
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := c.ShouldBindJSON(&userAction); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	notification := entities.Notification{
-		UserID:    request.UserID,
-		Content:   request.Content,
-		Status:    request.Status,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	err := sn.nu.Publisher.Publish(notification)
+	err := sn.nu.SendEvent(userAction)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, notification)
+	c.JSON(http.StatusCreated, gin.H{"message": "Event sent successfully"})
 }

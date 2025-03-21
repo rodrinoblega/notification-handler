@@ -5,17 +5,27 @@ import (
 )
 
 type EventPublisher interface {
-	Publish(notification entities.Notification) error
+	Publish(userAction *entities.UserAction) error
+}
+
+type UserActionRepository interface {
+	Create(userAction *entities.UserAction) error
+	GetByID(id int) (*entities.UserAction, error)
 }
 
 type PublishEventUseCase struct {
-	Publisher EventPublisher
+	Publisher            EventPublisher
+	UserActionRepository UserActionRepository
 }
 
-func NewPublishEventUseCase(publisher EventPublisher) *PublishEventUseCase {
-	return &PublishEventUseCase{Publisher: publisher}
+func NewPublishEventUseCase(publisher EventPublisher, repo UserActionRepository) *PublishEventUseCase {
+	return &PublishEventUseCase{Publisher: publisher, UserActionRepository: repo}
 }
 
-func (uc *PublishEventUseCase) SendNotification(n entities.Notification) error {
-	return uc.Publisher.Publish(n)
+func (uc *PublishEventUseCase) SendEvent(ua *entities.UserAction) error {
+	err := uc.UserActionRepository.Create(ua)
+	if err != nil {
+		return err
+	}
+	return uc.Publisher.Publish(ua)
 }

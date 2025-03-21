@@ -26,9 +26,10 @@ func main() {
 	envConf := config.Load(os.Getenv("ENV"))
 	db := database.NewPostgres(envConf)
 	repo := repositories.NewNotificationRepository(db)
+	userActionRepository := repositories.NewUserActionRepository(db)
 	notificationProviderA := notification_providers.NewNotificationProviderA()
 	notificationProviderB := notification_providers.NewNotificationProviderB()
-	reprocessFailureNotificationUseCase := usecases.NewReprocessFailureNotificationUseCase(repo, notificationProviderA, notificationProviderB)
+	reprocessFailureNotificationUseCase := usecases.NewReprocessFailureNotificationUseCase(repo, userActionRepository, notificationProviderA, notificationProviderB)
 
 	for {
 		select {
