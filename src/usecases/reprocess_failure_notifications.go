@@ -11,11 +11,10 @@ type ReprocessFailureNotificationUseCase struct {
 	NotificationRepository NotificationRepository
 	UserActionRepository   UserActionRepository
 	ProviderA              NotificationProvider
-	ProviderB              NotificationProvider
 }
 
-func NewReprocessFailureNotificationUseCase(repo NotificationRepository, userActionRepository UserActionRepository, providerA NotificationProvider, providerB NotificationProvider) *ReprocessFailureNotificationUseCase {
-	return &ReprocessFailureNotificationUseCase{NotificationRepository: repo, UserActionRepository: userActionRepository, ProviderA: providerA, ProviderB: providerB}
+func NewReprocessFailureNotificationUseCase(repo NotificationRepository, userActionRepository UserActionRepository, providerA NotificationProvider) *ReprocessFailureNotificationUseCase {
+	return &ReprocessFailureNotificationUseCase{NotificationRepository: repo, UserActionRepository: userActionRepository, ProviderA: providerA}
 }
 
 func (sn *ReprocessFailureNotificationUseCase) Reprocess() {
@@ -43,19 +42,13 @@ func (sn *ReprocessFailureNotificationUseCase) Reprocess() {
 		notification.Status = "processing_async"
 		sn.NotificationRepository.UpdateNotification(&notification)
 
-		log.Printf("Trying provider A")
+		log.Printf("Sending notification through third-party provider")
 		if sn.sendWithRetries(&notification, sn.ProviderA) {
 			sn.NotificationRepository.UpdateNotification(&notification)
 			continue
 		}
 
-		log.Printf("Trying provider B")
-		if sn.sendWithRetries(&notification, sn.ProviderB) {
-			sn.NotificationRepository.UpdateNotification(&notification)
-			continue
-		}
-
-		log.Printf("Both providers failed")
+		log.Printf("The third-party provider haas failed")
 		notification.Status = "permanent_failure_async"
 		sn.NotificationRepository.UpdateNotification(&notification)
 	}

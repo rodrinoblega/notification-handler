@@ -21,7 +21,7 @@ func NewKafkaProducer(env *config.Config) (*publishers.KafkaProducer, error) {
 	}, nil
 }
 
-func NewKafkaConsumer(env *config.Config, useCase *usecases.SaveNotificationUseCase) (*publishers.KafkaConsumer, error) {
+func NewKafkaConsumer(env *config.Config, useCase *usecases.ProcessNotificationUseCase) (*publishers.KafkaConsumer, error) {
 	groupID := "notification-consumer-group"
 
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -35,9 +35,9 @@ func NewKafkaConsumer(env *config.Config, useCase *usecases.SaveNotificationUseC
 	}
 
 	return &publishers.KafkaConsumer{
-		Consumer:         consumer,
-		Topic:            env.KafkaTopic,
-		SaveNotification: useCase,
+		Consumer:                   consumer,
+		Topic:                      env.KafkaTopic,
+		ProcessNotificationUseCase: useCase,
 	}, nil
 
 }

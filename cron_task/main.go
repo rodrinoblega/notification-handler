@@ -28,8 +28,7 @@ func main() {
 	repo := repositories.NewNotificationRepository(db)
 	userActionRepository := repositories.NewUserActionRepository(db)
 	notificationProviderA := notification_providers.NewNotificationProviderA()
-	notificationProviderB := notification_providers.NewNotificationProviderB()
-	reprocessFailureNotificationUseCase := usecases.NewReprocessFailureNotificationUseCase(repo, userActionRepository, notificationProviderA, notificationProviderB)
+	reprocessFailureNotificationUseCase := usecases.NewReprocessFailureNotificationUseCase(repo, userActionRepository, notificationProviderA)
 
 	for {
 		select {

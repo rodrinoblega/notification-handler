@@ -10,9 +10,9 @@ import (
 )
 
 type KafkaConsumer struct {
-	Consumer         *kafka.Consumer
-	Topic            string
-	SaveNotification *usecases.SaveNotificationUseCase
+	Consumer                   *kafka.Consumer
+	Topic                      string
+	ProcessNotificationUseCase *usecases.ProcessNotificationUseCase
 }
 
 func (kc *KafkaConsumer) Subscribe() {
@@ -34,7 +34,7 @@ func (kc *KafkaConsumer) Subscribe() {
 				continue
 			}
 
-			if err := kc.SaveNotification.CreateNotification(&userAction); err != nil {
+			if err := kc.ProcessNotificationUseCase.Execute(&userAction); err != nil {
 				log.Println("Error saving notification:", err)
 			} else {
 				log.Println("Notification saved successfully!")

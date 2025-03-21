@@ -27,17 +27,16 @@ type NotificationProvider interface {
 	Send(content string) error
 }
 
-type SaveNotificationUseCase struct {
+type ProcessNotificationUseCase struct {
 	Repo      NotificationRepository
 	ProviderA NotificationProvider
-	ProviderB NotificationProvider
 }
 
-func NewSaveNotificationUseCase(repo NotificationRepository, providerA NotificationProvider, providerB NotificationProvider) *SaveNotificationUseCase {
-	return &SaveNotificationUseCase{Repo: repo, ProviderA: providerA, ProviderB: providerB}
+func NewSaveNotificationUseCase(repo NotificationRepository, providerA NotificationProvider) *ProcessNotificationUseCase {
+	return &ProcessNotificationUseCase{Repo: repo, ProviderA: providerA}
 }
 
-func (sn *SaveNotificationUseCase) CreateNotification(ua *entities.UserAction) error {
+func (sn *ProcessNotificationUseCase) Execute(ua *entities.UserAction) error {
 	notification := initializePendingNotification(ua)
 
 	log.Printf("Getting template for %s.", notification.Type)
@@ -50,17 +49,12 @@ func (sn *SaveNotificationUseCase) CreateNotification(ua *entities.UserAction) e
 		return err
 	}
 
-	log.Printf("Trying provider A")
+	log.Printf("Sending notification through third-party provider")
 	if sn.sendWithRetries(notification, finalContent, sn.ProviderA) {
 		return sn.Repo.UpdateNotification(notification)
 	}
 
-	log.Printf("Trying provider B")
-	if sn.sendWithRetries(notification, finalContent, sn.ProviderB) {
-		return sn.Repo.UpdateNotification(notification)
-	}
-
-	log.Printf("Both providers failed")
+	log.Printf("The third-party provider haas failed")
 	notification.Status = "permanent_failure"
 	return sn.Repo.UpdateNotification(notification)
 }
@@ -76,7 +70,7 @@ func initializePendingNotification(ua *entities.UserAction) *entities.Notificati
 	}
 }
 
-func (sn *SaveNotificationUseCase) sendWithRetries(notification *entities.Notification, finalContent string, provider NotificationProvider) bool {
+func (sn *ProcessNotificationUseCase) sendWithRetries(notification *entities.Notification, finalContent string, provider NotificationProvider) bool {
 	retries := 0
 
 	for retries < MaxRetries {

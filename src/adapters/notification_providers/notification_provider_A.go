@@ -16,7 +16,7 @@ func NewNotificationProviderA() *NotificationProviderA {
 func (np *NotificationProviderA) Send(content string) error {
 	log.Printf("Simulating sending notification: %s\n", content)
 
-	if rand.Float32() < 0.8 {
+	if rand.Float32() < 0.6 {
 		return errors.New("simulated failure")
 	}
 
